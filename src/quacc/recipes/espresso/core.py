@@ -109,6 +109,7 @@ def relax_job(
     copy_files: (SourceDirectory | list[SourceDirectory] | Copy | None) = None,
     prev_outdir: SourceDirectory | None = None,
     additional_fields: dict[str, Any] | None = None,
+    require_force_convergence: bool = True,
     **calc_kwargs,
 ) -> RunSchema:
     """
@@ -139,6 +140,9 @@ def relax_job(
         to manually copy files. The directory will be ungzipped if necessary.
     additional_fields
         Additional fields to add to the results dictionary.
+    require_force_convergence
+        If True, jobs will fail if atomic forces are not converged. If False, jobs will be
+        marked as a success even if the atomic forces are not converged.
     **calc_kwargs
         Additional keyword arguments to pass to the Espresso calculator. Set a value to
         `quacc.Remove` to remove a pre-existing key entirely. See the docstring of
@@ -155,6 +159,10 @@ def relax_job(
         "calculation": "vc-relax" if relax_cell else "relax"
     }
 
+    allowed_return_codes = [0]
+    if (require_force_convergence == False):
+        allowed_return_codes.append(3)
+
     return run_and_summarize(
         atoms,
         preset=preset,
@@ -163,8 +171,8 @@ def relax_job(
         calc_swaps=calc_kwargs,
         additional_fields={"name": "pw.x Relax"} | (additional_fields or {}),
         copy_files=copy_files,
+        allowed_return_codes = allowed_return_codes,
     )
-
 
 @job
 def ase_relax_job(

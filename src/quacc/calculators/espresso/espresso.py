@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from ase.atoms import Atoms
-from ase.calculators.espresso import EspressoProfile
+from ase.calculators.espresso import EspressoProfile as EspressoProfile_
 from ase.calculators.espresso import EspressoTemplate as EspressoTemplate_
 from ase.calculators.genericfileio import GenericFileIOCalculator
 from ase.io import read, write
@@ -32,7 +32,7 @@ from quacc.utils.dicts import Remove, recursive_dict_merge, remove_dict_entries
 from quacc.utils.files import load_yaml_calc, safe_decompress_dir
 
 if TYPE_CHECKING:
-    from typing import Any
+    from typing import Any,Optional
 
 LOGGER = getLogger(__name__)
 
@@ -360,6 +360,7 @@ class Espresso(GenericFileIOCalculator):
         input_atoms: Atoms | None = None,
         preset: str | Path | None = None,
         template: EspressoTemplate | None = None,
+        allowed_return_codes: list | None = None,
         **kwargs,
     ) -> None:
         """
@@ -426,7 +427,9 @@ class Espresso(GenericFileIOCalculator):
         cmd_suffix = self._settings.ESPRESSO_PARALLEL_CMD[1]
 
         profile = EspressoProfile(
-            f"{cmd_prefix} {self._bin_path} {cmd_suffix}", self._pseudo_path
+            f"{cmd_prefix} {self._bin_path} {cmd_suffix}",
+            self._pseudo_path,
+            allowed_return_codes=allowed_return_codes
         )
 
         super().__init__(
@@ -485,3 +488,73 @@ class Espresso(GenericFileIOCalculator):
             "kspacing"
         ):
             raise ValueError("Cannot specify both kpts and kspacing.")
+
+class EspressoProfile(EspressoProfile_):
+
+    def __init__(self,command, pseudo_dir,
+                 allowed_return_codes:list|None = None,
+                 **kwargs):
+
+        super().__init__(command, **kwargs)
+        # not Path object to avoid problems in remote calculations from Windows
+        self.pseudo_dir = str(pseudo_dir)
+        self.allowed_return_codes = allowed_return_codes
+        self.run = self.new_run
+
+        if(self.allowed_return_codes is None):
+            self.allowed_return_codes = [0]
+        else:
+            self.allowed_return_codes.append(0)
+
+    def new_run(self, directory: Path, inputfile: Optional[str],
+            outputfile: str, errorfile: Optional[str] = None,
+            append: bool = False
+    ) -> None:
+        """
+        Run the command in the given directory. Redefined from
+        function in ASE generifileio to replace subprocess.check_call()
+        with subprocess.run(), because subprocess.check_call() raises an exception
+        for non-zero exit-codes, which is overly-restrictive for relaxation
+        jobs. The list of self.allowed_return_codes allows for easy definition of
+        QE conditions that should not be considered as failures.
+
+        Parameters
+        ----------
+        directory : pathlib.Path
+            The directory to run the command in.
+        inputfile : Optional[str]
+            The name of the input file.
+        outputfile : str
+            The name of the output file.
+        errorfile: Optional[str]
+            the stderror file
+        append: bool
+            if True then use append mode
+        """
+
+        import os
+        from subprocess import run as subprocess_run
+        from contextlib import ExitStack
+
+        argv_command = self.get_command(inputfile)
+        mode = 'wb' if not append else 'ab'
+
+        with ExitStack() as stack:
+            output_path = directory / outputfile
+            fd_out = stack.enter_context(open(output_path, mode))
+            if errorfile is not None:
+                error_path = directory / errorfile
+                fd_err = stack.enter_context(open(error_path, mode))
+            else:
+                fd_err = None
+            completed_result = subprocess_run(
+                argv_command,
+                cwd=directory,
+                stdout=fd_out,
+                stderr=fd_err,
+                env=os.environ,
+            )
+            return_code = abs(completed_result.returncode)
+            if(return_code not in self.allowed_return_codes):
+                completed_result.check_returncode()
+#%%

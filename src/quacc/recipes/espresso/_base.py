@@ -36,6 +36,7 @@ def run_and_summarize(
     profile: EspressoProfile | None = None,
     calc_defaults: dict[str, Any] | None = None,
     calc_swaps: dict[str, Any] | None = None,
+    allowed_return_codes:list | None = None,
     additional_fields: dict[str, Any] | None = None,
     copy_files: (SourceDirectory | list[SourceDirectory] | Copy | None) = None,
 ) -> RunSchema:
@@ -58,6 +59,8 @@ def run_and_summarize(
         Custom kwargs for the espresso calculator. Set a value to
         `quacc.Remove` to remove a pre-existing key entirely. For a list of available
         keys, refer to the [ase.calculators.espresso.Espresso][] calculator.
+    allowed_return_codes
+        Integer values of job exit codes that will not be considered as a job failure.
     additional_fields
         Any additional fields to supply to the summarizer.
     copy_files
@@ -76,6 +79,7 @@ def run_and_summarize(
         profile=profile,
         calc_defaults=calc_defaults,
         calc_swaps=calc_swaps,
+        allowed_return_codes = allowed_return_codes,
     )
 
     updated_copy_files = prepare_copy(
@@ -171,6 +175,7 @@ def prepare_calc(
     profile: EspressoProfile | None = None,
     calc_defaults: dict[str, Any] | None = None,
     calc_swaps: dict[str, Any] | None = None,
+    allowed_return_codes:list | None = None,
 ) -> Espresso:
     """
     Commonly used preparation function to merge parameters
@@ -192,6 +197,8 @@ def prepare_calc(
         Custom kwargs for the espresso calculator. Set a value to
         `quacc.Remove` to remove a pre-existing key entirely. For a list of available
         keys, refer to the [ase.calculators.espresso.Espresso][] calculator.
+    allowed_return_codes
+        Integer values of job exit codes that will not be considered as a job failure.
 
     Returns
     -------
@@ -218,6 +225,7 @@ def prepare_calc(
         preset=preset,
         template=template,
         profile=profile,
+        allowed_return_codes = allowed_return_codes,
         **calc_flags,
     )
 
