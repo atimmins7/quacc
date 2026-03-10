@@ -492,10 +492,9 @@ class Espresso(GenericFileIOCalculator):
 class EspressoProfile(EspressoProfile_):
 
     def __init__(self,command, pseudo_dir,
-                 allowed_return_codes:list|None = None,
-                 **kwargs):
+                 allowed_return_codes:list|None = None):
 
-        super().__init__(command, **kwargs)
+        super().__init__(command, pseudo_dir)
         # not Path object to avoid problems in remote calculations from Windows
         self.pseudo_dir = str(pseudo_dir)
         self.allowed_return_codes = allowed_return_codes
