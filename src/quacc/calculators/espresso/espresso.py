@@ -496,7 +496,6 @@ class EspressoProfile(EspressoProfile_):
 
         super().__init__(command, pseudo_dir)
         # not Path object to avoid problems in remote calculations from Windows
-        self.pseudo_dir = str(pseudo_dir)
         self.allowed_return_codes = allowed_return_codes
         self.run = self.new_run
 
