@@ -82,8 +82,10 @@ def calc_setup(
         job_results_dir = settings.RESULTS_DIR.resolve()
         if settings.CREATE_UNIQUE_DIR:
             job_results_dir /= f"{tmpdir.name.split('tmp-')[-1]}"
+        LOGGER.info(f"1. Calculation will STORED at {job_results_dir}")
 
     LOGGER.info(f"Calculation will run at {tmpdir}")
+    LOGGER.info(f"2. Calculation will STORED at {job_results_dir}")
 
     # Set the calculator's directory
     if atoms is not None:
@@ -101,6 +103,8 @@ def calc_setup(
         elif isinstance(copy_files, dict):
             for k, v in copy_files.items():
                 copy_decompress_files(k, v, tmpdir)
+
+    LOGGER.info(f"3. job_results_dir is {job_results_dir}")
 
     return tmpdir.resolve(), job_results_dir.resolve()
 
