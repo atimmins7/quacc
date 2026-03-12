@@ -185,6 +185,7 @@ def ase_relax_job(
     copy_files: (SourceDirectory | list[SourceDirectory] | Copy | None) = None,
     prev_outdir: SourceDirectory | None = None,
     additional_fields: dict[str, Any] | None = None,
+    require_force_convergence: bool = True,
     **calc_kwargs,
 ) -> RunSchema:
     """
@@ -220,6 +221,9 @@ def ase_relax_job(
         to manually copy files. The directory will be ungzipped if necessary.
     additional_fields
         Additional fields to add to the results dictionary.
+    require_force_convergence
+        If True, jobs will fail if atomic forces are not converged. If False, jobs will be
+        marked as a success even if the atomic forces are not converged.
     **calc_kwargs
         Additional keyword arguments to pass to the Espresso calculator. Set a value to
         `quacc.Remove` to remove a pre-existing key entirely. See the docstring of
@@ -240,6 +244,10 @@ def ase_relax_job(
 
     opt_defaults = {"optimizer": BFGSLineSearch, "relax_cell": relax_cell}
 
+    allowed_return_codes = [0]
+    if (require_force_convergence == False):
+        allowed_return_codes.append(3)
+
     return run_and_summarize_opt(
         atoms,
         preset=preset,
@@ -250,6 +258,7 @@ def ase_relax_job(
         opt_params=opt_params,
         additional_fields={"name": "pw.x ExternalRelax"} | (additional_fields or {}),
         copy_files=copy_files,
+        allowed_return_codes = allowed_return_codes,
     )
 
 
