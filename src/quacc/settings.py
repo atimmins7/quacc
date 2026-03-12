@@ -511,8 +511,8 @@ class QuaccSettings(BaseSettings):
         If WORKFLOW_ENGINE is jobflow, ensure that CREATE_UNIQUE_DIR
         is set to False since Jobflow already handles this for us.
         """
-        if self.WORKFLOW_ENGINE == "jobflow":
-            object.__setattr__(self, "CREATE_UNIQUE_DIR", False)
+        #if self.WORKFLOW_ENGINE == "jobflow":
+        #    object.__setattr__(self, "CREATE_UNIQUE_DIR", False)
         return self
 
 
