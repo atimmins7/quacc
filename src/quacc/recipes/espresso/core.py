@@ -110,6 +110,7 @@ def relax_job(
     prev_outdir: SourceDirectory | None = None,
     additional_fields: dict[str, Any] | None = None,
     require_force_convergence: bool = True,
+    store_only_final_step: bool = True,
     **calc_kwargs,
 ) -> RunSchema:
     """
@@ -166,7 +167,7 @@ def relax_job(
     return run_and_summarize(
         atoms,
         preset=preset,
-        template=EspressoTemplate("pw", test_run=test_run, outdir=prev_outdir),
+        template=EspressoTemplate("pw", test_run=test_run, outdir=prev_outdir,store_only_final_step=store_only_final_step),
         calc_defaults=calc_defaults,
         calc_swaps=calc_kwargs,
         additional_fields={"name": "pw.x Relax"} | (additional_fields or {}),
