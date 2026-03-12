@@ -224,6 +224,8 @@ class EspressoTemplate(EspressoTemplate_):
             atoms_traj = read(Path(directory) / self.outputname, format="espresso-out",index=index)
             for atoms in atoms_traj:
                 new_results = dict(atoms.calc.properties())
+                new_results['lengths_and_angles'] = atoms.get_cell_lengths_and_angles()
+                new_results['positions'] = atoms.get_positions()
                 all_results.append(new_results)
         elif self.binary in ["ph", "phcg"]:
             with Path(directory, self.outputname).open() as fd:
