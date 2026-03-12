@@ -109,6 +109,7 @@ def run_and_summarize_opt(
     opt_defaults: dict[str, Any] | None = None,
     opt_params: OptParams | None = None,
     additional_fields: dict[str, Any] | None = None,
+    allowed_return_codes:list | None = None,
     copy_files: (SourceDirectory | list[SourceDirectory] | Copy | None) = None,
 ) -> RunSchema:
     """
@@ -137,6 +138,8 @@ def run_and_summarize_opt(
         of available keys, refer to [quacc.runners.ase.Runner.run_opt][].
     additional_fields
         Any additional fields to supply to the summarizer.
+    allowed_return_codes
+        Integer values of job exit codes that will not be considered as a job failure.
     copy_files
         Files to copy (and decompress) from source to the runtime directory.
 
@@ -153,6 +156,7 @@ def run_and_summarize_opt(
         profile=profile,
         calc_defaults=calc_defaults,
         calc_swaps=calc_swaps,
+        allowed_return_codes = allowed_return_codes,
     )
 
     updated_copy_files = prepare_copy(
