@@ -49,6 +49,7 @@ class EspressoTemplate(EspressoTemplate_):
         test_run: bool = False,
         autorestart: bool = False,
         outdir: str | Path | None = None,
+        store_only_final: bool = True,
     ) -> None:
         """
         Initialize the Espresso template.
@@ -83,6 +84,17 @@ class EspressoTemplate(EspressoTemplate_):
         self.nruns = 0
         self.autorestart = autorestart
         self.outdir = outdir
+        self.store_only_final = True
+
+    def read_results(self, directory):
+        path = directory / self.outputname
+
+        index = '-1'
+        if(self.store_only_final == False):
+            index = ':'
+
+        atoms = read(path, format='espresso-out',index=index)
+        return dict(atoms.calc.properties())
 
     def write_input(
         self,
