@@ -84,7 +84,7 @@ class EspressoTemplate(EspressoTemplate_):
         self.nruns = 0
         self.autorestart = autorestart
         self.outdir = outdir
-        self.store_only_final = True
+        self.store_only_final = store_only_final
 
     def read_results(self, directory):
         path = directory / self.outputname
