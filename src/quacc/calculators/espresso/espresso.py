@@ -214,42 +214,49 @@ class EspressoTemplate(EspressoTemplate_):
         dict
             The results dictionnary
         """
-        results = {}
+        all_results = []
         if self.binary == "pw":
 
             index = '-1'
             if(self.store_only_final == False):
                 index = ':'
 
-            atoms = read(Path(directory) / self.outputname, format="espresso-out",index=index)
-            results = dict(atoms.calc.properties())
+            atoms_traj = read(Path(directory) / self.outputname, format="espresso-out",index=index)
+            for atoms in atoms_traj:
+                new_results = dict(atoms.calc.properties())
+                all_results.append(new_results)
         elif self.binary in ["ph", "phcg"]:
             with Path(directory, self.outputname).open() as fd:
-                results = read_espresso_ph(fd)
+                new_results = read_espresso_ph(fd)
+                all_results.append(new_results)
         elif self.binary == "dos":
             with Path(directory, "pwscf.dos").open() as fd:
                 lines = fd.readlines()
                 match = re.search(r"-?\d+\.?\d*", lines[0])
                 fermi = float(match.group(0)) if match else None
                 dos = np.loadtxt(lines[1:])
-            results = {"dos_results": {"dos": dos, "fermi": fermi}}
+            new_results = {"dos_results": {"dos": dos, "fermi": fermi}}
+            all_results.append(new_results)
         elif self.binary == "projwfc":
             with Path(directory, "pwscf.pdos_tot").open() as fd:
                 lines = np.loadtxt(fd.readlines())
                 energy = lines[1:, 0]
                 dos = lines[1:, 1]
                 pdos = lines[1:, 2]
-            results = {"projwfc_results": {"energy": energy, "dos": dos, "pdos": pdos}}
+            new_results = {"projwfc_results": {"energy": energy, "dos": dos, "pdos": pdos}}
+            all_results.append(new_results)
         elif self.binary == "matdyn":
             fldos = Path(directory, "matdyn.dos")
             if fldos.exists():
                 phonon_dos = np.loadtxt(fldos)
-                results = {"matdyn_results": {"phonon_dos": phonon_dos}}
+                new_results = results = {"matdyn_results": {"phonon_dos": phonon_dos}}
+                all_results.append(new_results)
 
-        if "energy" not in results:
-            results["energy"] = None
+        for idx,result in enumerate(all_results):
+            if "energy" not in result:
+                all_results[idx]["energy"] = None
 
-        return results
+        return all_results
 
     def _output_handler(
         self, parameters: dict[str, Any], directory: Path | str
