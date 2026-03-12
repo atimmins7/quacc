@@ -40,9 +40,9 @@ def prep_next_run(atoms: Atoms, move_magmoms: bool = False) -> Atoms:
         and hasattr(atoms, "calc")
         and getattr(atoms.calc, "results", None) is not None
     ):
-        atoms.set_initial_magnetic_moments(
-            atoms.calc.results.get("magmoms", [0.0] * len(atoms))
-        )
+        last_result = atoms.calc.results[-1]
+        last_magmoms = last_result.get("magmoms", [0.0] * len(atoms))
+        atoms.set_initial_magnetic_moments(last_magmoms)
 
     # Clear off the calculator so we can run a new job. If we don't do this,
     # then something like atoms *= (2,2,2) still has a calculator attached,
