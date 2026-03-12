@@ -86,16 +86,6 @@ class EspressoTemplate(EspressoTemplate_):
         self.outdir = outdir
         self.store_only_final = store_only_final
 
-    def read_results(self, directory):
-        path = directory / self.outputname
-
-        index = '-1'
-        if(self.store_only_final == False):
-            index = ':'
-
-        atoms = read(path, format='espresso-out',index=index)
-        return dict(atoms.calc.properties())
-
     def write_input(
         self,
         profile: EspressoProfile,
@@ -226,7 +216,12 @@ class EspressoTemplate(EspressoTemplate_):
         """
         results = {}
         if self.binary == "pw":
-            atoms = read(Path(directory) / self.outputname, format="espresso-out")
+
+            index = '-1'
+            if(self.store_only_final == False):
+                index = ':'
+
+            atoms = read(Path(directory) / self.outputname, format="espresso-out",index=index)
             results = dict(atoms.calc.properties())
         elif self.binary in ["ph", "phcg"]:
             with Path(directory, self.outputname).open() as fd:
