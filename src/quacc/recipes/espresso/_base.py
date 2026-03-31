@@ -80,7 +80,7 @@ def run_and_summarize(
         profile=profile,
         calc_defaults=calc_defaults,
         calc_swaps=calc_swaps,
-        allowed_return_codes = final_return_codes,
+        allowed_return_codes = allowed_return_codes,
     )
 
     updated_copy_files = prepare_copy(
