@@ -71,6 +71,7 @@ def run_and_summarize(
     RunSchema
         Dictionary of results from [quacc.schemas.ase.Summarize.run][]
     """
+
     atoms = Atoms() if atoms is None else atoms
     calc = prepare_calc(
         atoms,
@@ -79,7 +80,7 @@ def run_and_summarize(
         profile=profile,
         calc_defaults=calc_defaults,
         calc_swaps=calc_swaps,
-        allowed_return_codes = allowed_return_codes,
+        allowed_return_codes = final_return_codes,
     )
 
     updated_copy_files = prepare_copy(
@@ -224,12 +225,17 @@ def prepare_calc(
     calc_defaults = remove_conflicting_kpts_kspacing(calc_defaults, calc_swaps)
     calc_flags = recursive_dict_merge(calc_defaults, calc_swaps)
 
+    final_return_codes = [0]
+    if(allowed_return_codes is not None and type(allowed_return_codes) == list):
+        final_return_codes.extend(allowed_return_codes)
+    final_return_codes = list(set(final_return_codes))
+
     return Espresso(
         input_atoms=atoms,
         preset=preset,
         template=template,
         profile=profile,
-        allowed_return_codes = allowed_return_codes,
+        allowed_return_codes = final_return_codes,
         **calc_flags,
     )
 
