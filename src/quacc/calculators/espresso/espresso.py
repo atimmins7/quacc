@@ -217,11 +217,14 @@ class EspressoTemplate(EspressoTemplate_):
         all_results = []
         if self.binary == "pw":
 
-            index = '-1'
-            if(self.store_only_final == False):
-                index = ':'
+            atoms_traj = read(Path(directory) / self.outputname, format="espresso-out",index=":")
 
-            atoms_traj = read(Path(directory) / self.outputname, format="espresso-out",index=index)
+            if(type(atoms_traj) != list):
+                atoms_traj = [atoms_traj]
+
+            if(self.store_only_final):
+                atoms_traj = [atoms_traj[-1]]
+
             for atoms in atoms_traj:
                 new_results = dict(atoms.calc.properties())
                 new_results['lengths_and_angles'] = atoms.get_cell_lengths_and_angles()
