@@ -13,6 +13,7 @@ from ase.atoms import Atoms
 from ase.calculators.espresso import EspressoProfile as EspressoProfile_
 from ase.calculators.espresso import EspressoTemplate as EspressoTemplate_
 from ase.calculators.genericfileio import GenericFileIOCalculator
+from ase.units import Bohr
 from ase.io import read, write
 from ase.io.espresso import (
     Namelist,
@@ -30,6 +31,10 @@ from quacc.calculators.espresso.utils import (
 )
 from quacc.utils.dicts import Remove, recursive_dict_merge, remove_dict_entries
 from quacc.utils.files import load_yaml_calc, safe_decompress_dir
+
+
+import qeschema
+import copy
 
 if TYPE_CHECKING:
     from typing import Any,Optional
@@ -230,6 +235,9 @@ class EspressoTemplate(EspressoTemplate_):
                 new_results['lengths_and_angles'] = atoms.get_cell_lengths_and_angles()
                 new_results['positions'] = atoms.get_positions()
                 all_results.append(new_results)
+
+            all_results = self.fix_corrupted_results(all_results, directory)
+
         elif self.binary in ["ph", "phcg"]:
             with Path(directory, self.outputname).open() as fd:
                 new_results = read_espresso_ph(fd)
@@ -262,6 +270,209 @@ class EspressoTemplate(EspressoTemplate_):
                 all_results[idx]["energy"] = None
 
         return all_results
+
+    def fix_corrupted_results(self,initial_results,directory: os.PathLike, debug=False):
+        """
+        Detect and fix a known Quantum ESPRESSO output bug where the first
+        ionic step's atomic positions/cell are printed incorrectly to the
+        text output file (pw.out) after a restart.
+
+        Some QE runs print the line "Atomic positions from file used, from
+        input discarded" in the output, which indicates that the positions
+        and cell reported for step #0 in the text output do not correspond
+        to the input structure actually used for the calculation. When this
+        is detected, this function attempts to recover the correct step #0
+        positions and cell from the accompanying `data-file-schema.xml` file
+        (which is written independently of the text output and is not
+        affected by this bug).
+
+        Recovery logic:
+            1. If the corrupting line is not found in the output file,
+               `initial_results` is returned unchanged.
+            2. If the line is found but a unique `data-file-schema.xml`
+               cannot be located in `directory`, the corrupted step #0 data
+               cannot be verified or fixed; it is left as-is (with a debug
+               message noting the failure).
+            3. If a unique XML file is found, its step #0 positions are
+               compared against the (possibly wrong) text-output positions.
+               If they differ, the XML values are considered authoritative
+               and used to overwrite step #0's 'positions' and
+               'lengths_and_angles' in the returned results.
+            4. If the corruption is detected but cannot be fixed (i.e.
+               `step0_fixable` is False), step #0's 'positions',
+               'lengths_and_angles', and 'forces' are cleared to empty
+               lists so that corrupted data is not silently submitted.
+
+        Parameters
+        ----------
+        initial_results : list[dict]
+            List of per-ionic-step result dictionaries (as produced by
+            `read_results`), each expected to contain at least 'positions'
+            and 'lengths_and_angles' keys.
+        directory : os.PathLike
+            Directory containing the QE output file and, if present, the
+            `data-file-schema.xml` file used for the fix.
+        debug : bool, optional
+            If True, print diagnostic messages describing what was detected
+            and/or fixed. Default is False.
+
+        Returns
+        -------
+        list[dict]
+            A deep copy of `initial_results`, with step #0 either corrected
+            using the XML data, left unchanged (if uncorrupted), or cleared
+            (if corrupted and unfixable).
+        """
+
+        final_results = copy.deepcopy(initial_results)
+
+        step0_corrupted = False
+        step0_fixable = False
+
+        pw_document = qeschema.PwDocument()
+
+        input_atoms_discarded = self._check_if_input_atoms_discarded(Path(directory) / self.outputname)
+        if input_atoms_discarded:
+            step0_corrupted = True
+            xml_paths = self._find_files(directory, filename="data-file-schema.xml")
+            if len(xml_paths) == 1:
+                step0_fixable = True
+            elif debug:
+                print("Input atoms were discarded, but data-file-schema.xml cannot be "
+                      "uniquely identified.")
+
+        if step0_corrupted:
+            if step0_fixable:
+                pw_positions = [result['positions'] for result in initial_results]
+
+                pw_document.read(xml_paths[0])
+                xml_data = pw_document.to_dict()
+
+                xml_steps = xml_data['qes:espresso']['step']
+                if isinstance(xml_steps, dict):
+                    xml_steps = [xml_steps]
+
+                xml_position_dicts = [xml_step['atomic_structure']['atomic_positions'] for xml_step in xml_steps]
+                xml_positions = [self._atoms_dict_to_array(d, to_angstrom=True) for d in xml_position_dicts]
+
+                xml_cell_dicts = [self._create_cell_array(xml_step['atomic_structure']['cell'], to_angstrom=True)
+                                  for xml_step in xml_steps]
+                xml_cellpars = [self._cell_to_cellpar(c) for c in xml_cell_dicts]
+
+                step0_positions_match = np.allclose(pw_positions[0], xml_positions[0])
+                if not step0_positions_match:
+                    if debug:
+                        print("Updating Info for Step #0")
+                    final_results[0]['positions'] = xml_positions[0]
+                    final_results[0]['lengths_and_angles'] = xml_cellpars[0]
+
+            else:
+                if debug:
+                    print("Step #0 could not be fixed. Removing corrupted data from DB submission")
+                final_results[0]['positions'] = []
+                final_results[0]['lengths_and_angles'] = []
+                final_results[0]['forces'] = []
+
+        return final_results
+
+    def _find_files(self,directory: str, filename: str) -> list[str]:
+        """
+        Recursively search `directory` for files named `filename`.
+
+        Args:
+            directory: Root directory to search.
+            filename: Exact file name to match (e.g. "config.json").
+
+        Returns:
+            List of matching file paths as strings.
+        """
+        root = Path(directory)
+        return [str(p) for p in root.rglob(filename) if p.is_file()]
+
+    def _atoms_dict_to_array(self,data: dict, to_angstrom: bool = False) -> np.ndarray:
+        """
+        Convert a QE XML-style atom dictionary into an (N, 3) numpy array of positions.
+
+        Args:
+            data: Dict with key 'atom', a list of entries each containing
+                  '$' (the [x, y, z] position in Bohr).
+            to_angstrom: If True, convert positions from Bohr to Angstrom.
+
+        Returns:
+            (N, 3) numpy array of positions.
+        """
+        positions = np.array([atom['$'] for atom in data['atom']])
+
+        if to_angstrom:
+            positions *= Bohr
+
+        return positions
+
+    def _cell_to_cellpar(self,cell: np.ndarray, degrees: bool = True) -> np.ndarray:
+        """
+        Convert a 3x3 cell matrix (rows = lattice vectors a1, a2, a3) into
+        a flat 6-element array [a, b, c, alpha, beta, gamma].
+
+        Args:
+            cell: (3, 3) numpy array. Rows are the lattice vectors.
+            degrees: If True, return angles in degrees. If False, radians.
+
+        Returns:
+            (6,) numpy array: [a, b, c, alpha, beta, gamma], where
+            alpha = angle between b and c,
+            beta  = angle between a and c,
+            gamma = angle between a and b.
+        """
+        cell = np.asarray(cell, dtype=float)
+        a1, a2, a3 = cell
+
+        a = np.linalg.norm(a1)
+        b = np.linalg.norm(a2)
+        c = np.linalg.norm(a3)
+
+        def angle(u, v):
+            cos_theta = np.dot(u, v) / (np.linalg.norm(u) * np.linalg.norm(v))
+            cos_theta = np.clip(cos_theta, -1.0, 1.0)  # guard against rounding error
+            return np.arccos(cos_theta)
+
+        alpha = angle(a2, a3)
+        beta = angle(a1, a3)
+        gamma = angle(a1, a2)
+
+        if degrees:
+            alpha, beta, gamma = np.degrees([alpha, beta, gamma])
+
+        return np.array([a, b, c, alpha, beta, gamma])
+
+    def _create_cell_array(self,cell_dict, to_angstrom: bool = False):
+        cell_array = []
+        for k, v in cell_dict.items():
+            new_row = np.array(v)
+            if (to_angstrom):
+                new_row *= Bohr
+            cell_array.append(new_row)
+        cell_array = np.array(cell_array)
+        return cell_array
+
+    def _check_if_input_atoms_discarded(self,filepath: str) -> bool:
+        """
+        Search a text file for the line containing:
+        "Atomic positions from file used, from input discarded"
+
+        Args:
+            filepath: Path to the text file to search.
+
+        Returns:
+            True if the string is found, False otherwise.
+        """
+        target = "Atomic positions from file used, from input discarded"
+
+        with open(filepath, "r") as f:
+            for line in f:
+                if target in line:
+                    return True
+
+        return False
 
     def _output_handler(
         self, parameters: dict[str, Any], directory: Path | str
